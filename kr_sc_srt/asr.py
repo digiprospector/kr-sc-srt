@@ -107,13 +107,11 @@ def _transcribe_chunked(
                 f"{start_ms / 1000:.1f}秒 – {end_ms / 1000:.1f}秒 ...",
                 flush=True,
             )
-
             try:
                 result = model.generate(
                     input=str(temp_path),
                     language=language,
                     use_itn=True,
-                    sentence_timestamp=True,
                     merge_vad=True,
                     merge_length_s=15,
                 )
