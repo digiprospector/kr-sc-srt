@@ -40,7 +40,7 @@ class Pipeline:
         self.log(f"[{_timestamp()}] job: {self.job_name}")
         self.log(f"[{_timestamp()}] output: {self.out_dir}")
 
-    def prepare(self, asr_model: str) -> None:
+    def prepare(self, asr_model: str, asr_chunk_s: int = asr.DEFAULT_CHUNK_S) -> None:
         self.log(f"[{_timestamp()}] prepare started")
         low_video = self._stage(
             "download_low",
@@ -65,6 +65,7 @@ class Pipeline:
                 "audio": str(audio_path),
                 "model": asr_model,
                 "model_cache_dir": str(self.model_cache_dir) if self.model_cache_dir else None,
+                "asr_chunk_s": asr_chunk_s,
             },
             [ko_srt],
             lambda: StageResult(
@@ -75,6 +76,7 @@ class Pipeline:
                             ko_srt,
                             model_cache_dir=self.model_cache_dir,
                             model_name=asr_model,
+                            chunk_duration_s=asr_chunk_s,
                         )
                     )
                 }

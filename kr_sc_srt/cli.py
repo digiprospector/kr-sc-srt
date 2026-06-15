@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.command == "prepare":
-        pipeline.prepare(asr_model=args.asr_model)
+        pipeline.prepare(asr_model=args.asr_model, asr_chunk_s=args.asr_chunk_s)
     elif args.command == "render":
         segments = Path(args.segments).expanduser().resolve() if args.segments else pipeline.out_dir / f"{pipeline.job_name}.csv"
         pipeline.render(segments, font=args.font)
@@ -73,6 +73,12 @@ def build_parser() -> argparse.ArgumentParser:
     prepare = subparsers.add_parser("prepare", help="First pass: low-res download and Korean ASR.")
     _add_common(prepare)
     prepare.add_argument("--asr-model", default=asr.DEFAULT_MODEL, help="FunASR model id.")
+    prepare.add_argument(
+        "--asr-chunk-s",
+        type=int,
+        default=asr.DEFAULT_CHUNK_S,
+        help="ASR chunk duration in seconds.",
+    )
 
     render = subparsers.add_parser("render", help="Second pass: high-res download, split, and burn subtitles.")
     _add_common(render)
