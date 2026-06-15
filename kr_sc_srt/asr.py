@@ -190,7 +190,8 @@ def _result_to_cues(
                                 raw_tokens.append({
                                     "text": w,
                                     "start": int(elem[1]),
-                                    "end": int(elem[2])
+                                    "end": int(elem[2]),
+                                    "space_after": True
                                 })
                 # 2.2 支持 [start, end] 格式，需与 cleaned_text 的词或字进行绑定
                 elif isinstance(first_elem, (list, tuple)) and len(first_elem) == 2:
@@ -200,17 +201,29 @@ def _result_to_cues(
                             raw_tokens.append({
                                 "text": w,
                                 "start": int(elem[0]),
-                                "end": int(elem[1])
+                                "end": int(elem[1]),
+                                "space_after": True
                             })
                     else:
-                        # 如果非空格分隔（如中文或字符级时间戳），则与去空格后的字符绑定
-                        chars = [c for c in cleaned_text if not c.isspace()]
+                        # 如果非空格分隔（如中文或字符级时间戳），则与去空格后的字符绑定，并记录其原始间隔是否是空格
+                        chars = []
+                        space_after_flags = []
+                        for i, c in enumerate(cleaned_text):
+                            if c.isspace():
+                                continue
+                            chars.append(c)
+                            has_space = False
+                            if i + 1 < len(cleaned_text) and cleaned_text[i + 1].isspace():
+                                has_space = True
+                            space_after_flags.append(has_space)
+
                         if len(chars) == len(raw_timestamp):
-                            for c, elem in zip(chars, raw_timestamp):
+                            for c, space_after, elem in zip(chars, space_after_flags, raw_timestamp):
                                 raw_tokens.append({
                                     "text": c,
                                     "start": int(elem[0]),
-                                    "end": int(elem[1])
+                                    "end": int(elem[1]),
+                                    "space_after": space_after
                                 })
                         else:
                             # 长度仍不匹配时，进行最小长度对齐截断
@@ -219,7 +232,8 @@ def _result_to_cues(
                                 raw_tokens.append({
                                     "text": chars[i],
                                     "start": int(raw_timestamp[i][0]),
-                                    "end": int(raw_timestamp[i][1])
+                                    "end": int(raw_timestamp[i][1]),
+                                    "space_after": space_after_flags[i]
                                 })
 
             # 2.3 将解析出的字词级 token 按停顿（Gap）、时长和字数聚合为字幕行
@@ -227,6 +241,14 @@ def _result_to_cues(
                 max_gap_ms = 800        # 静音停顿超过 0.8 秒切分
                 max_duration_ms = 4000  # 单行字幕最长 4 秒
                 max_text_len = 36       # 单行字幕最长 36 字符
+
+                def _join_tokens(tokens: list[dict[str, Any]]) -> str:
+                    parts = []
+                    for idx_t, t in enumerate(tokens):
+                        parts.append(t["text"])
+                        if t.get("space_after", True) and idx_t < len(tokens) - 1:
+                            parts.append(" ")
+                    return "".join(parts)
 
                 curr_tokens: list[dict[str, Any]] = []
                 for tok in raw_tokens:
@@ -237,10 +259,10 @@ def _result_to_cues(
                     prev_tok = curr_tokens[-1]
                     gap = tok["start"] - prev_tok["end"]
                     curr_duration = tok["end"] - curr_tokens[0]["start"]
-                    curr_text = " ".join([t["text"] for t in curr_tokens]) + " " + tok["text"]
+                    curr_text = _join_tokens(curr_tokens + [tok])
 
                     if gap > max_gap_ms or curr_duration > max_duration_ms or len(curr_text) > max_text_len:
-                        cue_text = " ".join([t["text"] for t in curr_tokens])
+                        cue_text = _join_tokens(curr_tokens)
                         start = curr_tokens[0]["start"] + offset_ms
                         end = curr_tokens[-1]["end"] + offset_ms
                         cues.append(Cue(index=len(cues) + 1, start_ms=start, end_ms=end, text=cue_text))
@@ -249,7 +271,7 @@ def _result_to_cues(
                         curr_tokens.append(tok)
 
                 if curr_tokens:
-                    cue_text = " ".join([t["text"] for t in curr_tokens])
+                    cue_text = _join_tokens(curr_tokens)
                     start = curr_tokens[0]["start"] + offset_ms
                     end = curr_tokens[-1]["end"] + offset_ms
                     cues.append(Cue(index=len(cues) + 1, start_ms=start, end_ms=end, text=cue_text))

@@ -59,7 +59,7 @@ def test_result_to_cues_simple_timestamp_space_separated():
 
 
 def test_result_to_cues_simple_timestamp_cjk():
-    # Test [start, end] format aligned character by character (CJK)
+    # Test [start, end] format aligned character by character (CJK) without spaces
     result = {
         "text": "안녕하세요",
         "timestamp": [
@@ -73,12 +73,31 @@ def test_result_to_cues_simple_timestamp_cjk():
     }
     cues = _result_to_cues(result, offset_ms=1000)
     assert len(cues) == 2
-    assert cues[0].text == "안 녕 하 세"
+    assert cues[0].text == "안녕하세"
     assert cues[0].start_ms == 1100
     assert cues[0].end_ms == 1900
     assert cues[1].text == "요"
     assert cues[1].start_ms == 2800
     assert cues[1].end_ms == 3000
+
+
+def test_result_to_cues_simple_timestamp_cjk_with_spaces():
+    # Test [start, end] format aligned character by character (CJK) preserving actual spaces
+    result = {
+        "text": "안녕 하세요",
+        "timestamp": [
+            [100, 300],
+            [300, 500],
+            [500, 700],
+            [700, 900],
+            [900, 1100],
+        ]
+    }
+    cues = _result_to_cues(result, offset_ms=1000)
+    assert len(cues) == 1
+    assert cues[0].text == "안녕 하세요"
+    assert cues[0].start_ms == 1100
+    assert cues[0].end_ms == 2100
 
 
 def test_result_to_cues_duration_split():
