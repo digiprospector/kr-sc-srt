@@ -40,6 +40,30 @@ def probe_duration_ms(media: Path) -> int:
     return int(float(output) * 1000)
 
 
+def cut_audio(source: Path, target: Path, start_ms: int, end_ms: int) -> Path:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    runner.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            format_ffmpeg_time(start_ms),
+            "-to",
+            format_ffmpeg_time(end_ms),
+            "-i",
+            str(source),
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "pcm_s16le",
+            str(target),
+        ]
+    )
+    return target
+
+
 def cut_video(source: Path, target: Path, start_ms: int, end_ms: int) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     runner.run(

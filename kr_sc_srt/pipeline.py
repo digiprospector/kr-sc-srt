@@ -42,7 +42,14 @@ class Pipeline:
         self.log(f"[{_timestamp()}] 任务: {self.job_name}")
         self.log(f"[{_timestamp()}] 输出目录: {self.out_dir}")
 
-    def prepare(self, asr_model: str = asr.DEFAULT_MODEL) -> None:
+    def prepare(
+        self,
+        asr_model: str = asr.DEFAULT_MODEL,
+        asr_chunk_minutes: int = asr.DEFAULT_CHUNK_MINUTES,
+        vad_threshold: float = asr.DEFAULT_VAD_THRESHOLD,
+        vad_min_silence_ms: int = asr.DEFAULT_VAD_MIN_SILENCE_MS,
+        vad_speech_pad_ms: int = asr.DEFAULT_VAD_SPEECH_PAD_MS,
+    ) -> None:
         self.log(f"[{_timestamp()}] prepare 阶段已启动")
         low_video = self._stage(
             "download_low",
@@ -65,6 +72,10 @@ class Pipeline:
         asr_params = {
             "audio": str(audio_path),
             "model": asr_model,
+            "chunk_minutes": asr_chunk_minutes,
+            "vad_threshold": vad_threshold,
+            "vad_min_silence_ms": vad_min_silence_ms,
+            "vad_speech_pad_ms": vad_speech_pad_ms,
         }
 
         # 如果在 Colab 中处于 CPU 运行模式，则停止执行并提示用户切换到 GPU 运行时
@@ -105,6 +116,10 @@ class Pipeline:
                             audio_path,
                             ko_srt,
                             model_name=asr_model,
+                            chunk_minutes=asr_chunk_minutes,
+                            vad_threshold=vad_threshold,
+                            vad_min_silence_ms=vad_min_silence_ms,
+                            vad_speech_pad_ms=vad_speech_pad_ms,
                         )
                     )
                 }

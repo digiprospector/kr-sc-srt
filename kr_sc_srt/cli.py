@@ -58,7 +58,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.command == "prepare":
-        pipeline.prepare(asr_model=args.asr_model)
+        pipeline.prepare(
+            asr_model=args.asr_model,
+            asr_chunk_minutes=args.asr_chunk_minutes,
+            vad_threshold=args.vad_threshold,
+            vad_min_silence_ms=args.vad_min_silence_ms,
+            vad_speech_pad_ms=args.vad_speech_pad_ms,
+        )
     elif args.command == "render":
         segments = Path(args.segments).expanduser().resolve() if args.segments else pipeline.out_dir / f"{pipeline.job_name}.csv"
         pipeline.render(segments, font=args.font)
@@ -74,6 +80,30 @@ def build_parser() -> argparse.ArgumentParser:
     prepare = subparsers.add_parser("prepare", help="第一阶段：低画质下载和韩语 ASR 语音识别。")
     _add_common(prepare)
     prepare.add_argument("--asr-model", default=asr.DEFAULT_MODEL, help="Whisper 模型名称（如 large-v2、medium 等）。")
+    prepare.add_argument(
+        "--asr-chunk-minutes",
+        type=int,
+        default=asr.DEFAULT_CHUNK_MINUTES,
+        help="ASR 音频分片目标长度（分钟）。",
+    )
+    prepare.add_argument(
+        "--vad-threshold",
+        type=float,
+        default=asr.DEFAULT_VAD_THRESHOLD,
+        help="Silero VAD 语音概率阈值。",
+    )
+    prepare.add_argument(
+        "--vad-min-silence-ms",
+        type=int,
+        default=asr.DEFAULT_VAD_MIN_SILENCE_MS,
+        help="Silero VAD 最短静音时长（毫秒）。",
+    )
+    prepare.add_argument(
+        "--vad-speech-pad-ms",
+        type=int,
+        default=asr.DEFAULT_VAD_SPEECH_PAD_MS,
+        help="Silero VAD 语音片段前后填充（毫秒）。",
+    )
 
     render = subparsers.add_parser("render", help="第二阶段：高画质下载、分段并烧录字幕。")
     _add_common(render)

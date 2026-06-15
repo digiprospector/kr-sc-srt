@@ -20,12 +20,31 @@ def test_cli_prepare_resume_last_uses_saved_url(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(cli, "Pipeline", FakePipeline)
 
-    code = cli.main(["prepare", "--root", str(tmp_path), "--resume-last"])
+    code = cli.main(
+        [
+            "prepare",
+            "--root",
+            str(tmp_path),
+            "--resume-last",
+            "--asr-chunk-minutes",
+            "25",
+            "--vad-threshold",
+            "0.4",
+            "--vad-min-silence-ms",
+            "900",
+            "--vad-speech-pad-ms",
+            "250",
+        ]
+    )
 
     assert code == 0
     assert captured["source"] == "https://example.test/vod"
     assert captured["out_dir"] == out_dir.resolve()
     assert captured["prepare"]["asr_model"]
+    assert captured["prepare"]["asr_chunk_minutes"] == 25
+    assert captured["prepare"]["vad_threshold"] == 0.4
+    assert captured["prepare"]["vad_min_silence_ms"] == 900
+    assert captured["prepare"]["vad_speech_pad_ms"] == 250
 
 
 def test_cli_prepare_resume_last_without_saved_job_explains_first_run(tmp_path: Path, capsys):

@@ -8,8 +8,9 @@ The project is designed for Colab first, with the same CLI available on Linux an
 
 1. First pass, `prepare`
    - Downloads the lowest available video quality.
-   - Extracts 16 kHz mono WAV audio.
-   - Uses FunASR `iic/SenseVoiceSmall` to create `ko.srt`.
+   - Extracts audio from the low-quality video.
+   - Uses Faster-Whisper-XXL to create `ko.srt`.
+   - For long audio, uses Silero VAD to split the audio into roughly 30-minute chunks and merges the chunk SRT files.
    - Stops there so you can download `ko.srt` and translate it locally with the helper command.
    - Does not create a subtitled video.
 2. Second pass, `render`
@@ -93,13 +94,16 @@ kr-sc-srt render --root ./work --resume-last
 
 ## Important Options
 
-- `--model-cache-dir`: persistent FunASR/model cache. In Colab, use Google Drive.
+- `--model-cache-dir`: persistent model cache path. In Colab, use Google Drive.
 - `--resume-last`: load the URL and output directory from `<root>/last_job.json`.
 - `--force-stage STAGE`: rerun one stage, for example `--force-stage asr`.
 - `--force-all`: rerun every stage.
 - `--cookies cookies.txt`: optional yt-dlp cookies file. First version only guarantees public SOOP VODs.
 - `--segments file.csv`: explicit segment CSV for `render`.
-- `--asr-chunk-s SECONDS`: ASR audio chunk size in seconds (default: 180).
+- `--asr-chunk-minutes MINUTES`: target ASR audio chunk length in minutes (default: 30).
+- `--vad-threshold FLOAT`: Silero VAD speech probability threshold (default: 0.5).
+- `--vad-min-silence-ms MS`: minimum silence duration used by Silero VAD (default: 700).
+- `--vad-speech-pad-ms MS`: speech padding used by Silero VAD (default: 300).
 - `--test`: test mode, only extract and process the first 10 minutes of audio.
 
 For local translation:

@@ -1,56 +1,231 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
-from . import runner
+from . import media, runner
+from .srt import Cue, read_srt, renumber, write_srt
 
 WHISPER_BINARY = "/content/drive/MyDrive/Faster-Whisper-XXL/faster-whisper-xxl"
 DEFAULT_MODEL = "large-v2"
+DEFAULT_CHUNK_MINUTES = 30
+DEFAULT_VAD_THRESHOLD = 0.5
+DEFAULT_VAD_MIN_SILENCE_MS = 700
+DEFAULT_VAD_SPEECH_PAD_MS = 300
+
+VAD_SAMPLE_RATE = 16_000
+SPLIT_SEARCH_WINDOW_MS = 5 * 60 * 1000
+MIN_CHUNK_MS = 60 * 1000
+
+
+@dataclass(frozen=True)
+class SpeechRange:
+    start_ms: int
+    end_ms: int
+
+
+@dataclass(frozen=True)
+class AudioChunk:
+    index: int
+    start_ms: int
+    end_ms: int
+    path: Path
 
 
 def transcribe_to_srt(
     audio: Path,
     output_srt: Path,
     model_name: str = DEFAULT_MODEL,
+    chunk_minutes: int = DEFAULT_CHUNK_MINUTES,
+    vad_threshold: float = DEFAULT_VAD_THRESHOLD,
+    vad_min_silence_ms: int = DEFAULT_VAD_MIN_SILENCE_MS,
+    vad_speech_pad_ms: int = DEFAULT_VAD_SPEECH_PAD_MS,
 ) -> Path:
-    """使用 Faster-Whisper-XXL 将音频 *audio* 转录为 SRT 字幕文件。
-
-    Whisper 二进制直接输出 SRT，无需在 Python 端进行时间戳解析或句度分割。
-    """
+    """Transcribe Korean audio to SRT with chunking for long inputs."""
     output_dir = output_srt.parent
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    duration_ms = media.probe_duration_ms(audio)
+    target_ms = max(1, chunk_minutes) * 60 * 1000
+    if duration_ms <= target_ms:
+        return _transcribe_single_audio(audio, output_srt, model_name)
+
+    speech_ranges = _detect_speech_ranges(
+        audio,
+        threshold=vad_threshold,
+        min_silence_ms=vad_min_silence_ms,
+        speech_pad_ms=vad_speech_pad_ms,
+    )
+    chunk_ranges = _plan_chunk_ranges(duration_ms, speech_ranges, target_ms)
+    chunks = _cut_audio_chunks(audio, output_dir / ".asr_chunks", chunk_ranges)
+
+    merged: list[Cue] = []
+    for chunk in chunks:
+        chunk_srt = chunk.path.with_suffix(".srt")
+        _transcribe_single_audio(chunk.path, chunk_srt, model_name)
+        merged.extend(_read_offset_cues(chunk_srt, chunk.start_ms))
+
+    if not merged:
+        raise RuntimeError("Whisper did not return any subtitles")
+
+    write_srt(output_srt, renumber(sorted(merged, key=lambda cue: (cue.start_ms, cue.end_ms))))
+    print(f"[asr] Korean subtitles generated: {output_srt}", flush=True)
+    return output_srt
+
+
+def _transcribe_single_audio(audio: Path, output_srt: Path, model_name: str) -> Path:
+    output_dir = output_srt.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_srt.unlink(missing_ok=True)
 
     cmd = [
         WHISPER_BINARY,
         str(audio),
-        "-m", model_name,
-        "-l", "Korean",
-        "--vad_method", "pyannote_v3",
-        "--ff_vocal_extract", "mdx_kim2",
+        "-m",
+        model_name,
+        "-l",
+        "Korean",
+        "--vad_method",
+        "pyannote_v3",
+        "--ff_vocal_extract",
+        "mdx_kim2",
         "--sentence",
-        "-v", "true",
-        "-o", str(output_dir),
-        "-f", "srt",
+        "-v",
+        "true",
+        "-o",
+        str(output_dir),
+        "-f",
+        "srt",
     ]
 
-    print(f"[asr] 正在运行 Whisper: 模型={model_name}", flush=True)
+    print(f"[asr] Running Whisper: model={model_name}, audio={audio}", flush=True)
     runner.run(cmd)
 
-    # Whisper 输出文件名基于输入文件的 stem（如 198391511.aac → 198391511.srt）
     generated = output_dir / f"{audio.stem}.srt"
     if generated.resolve() != output_srt.resolve():
         if generated.exists():
             shutil.move(str(generated), str(output_srt))
         else:
-            raise FileNotFoundError(
-                f"Whisper 未在预期位置生成 SRT 文件: {generated}"
-            )
+            raise FileNotFoundError(f"Whisper did not create the expected SRT: {generated}")
 
     if not output_srt.exists():
-        raise FileNotFoundError(
-            f"Whisper 未生成预期的 SRT 文件: {output_srt}"
-        )
-
-    print(f"[asr] 韩语字幕已生成: {output_srt}", flush=True)
+        raise FileNotFoundError(f"Whisper did not create the expected SRT: {output_srt}")
     return output_srt
+
+
+def _detect_speech_ranges(
+    audio: Path,
+    threshold: float,
+    min_silence_ms: int,
+    speech_pad_ms: int,
+) -> list[SpeechRange]:
+    try:
+        from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
+    except ImportError as exc:
+        raise RuntimeError(
+            "silero-vad is required for long audio chunking. "
+            "Install dependencies with pip install -r requirements.txt."
+        ) from exc
+
+    model = load_silero_vad()
+    wav = read_audio(str(audio), sampling_rate=VAD_SAMPLE_RATE)
+    timestamps = get_speech_timestamps(
+        wav,
+        model,
+        sampling_rate=VAD_SAMPLE_RATE,
+        threshold=threshold,
+        min_silence_duration_ms=min_silence_ms,
+        speech_pad_ms=speech_pad_ms,
+    )
+    return [
+        SpeechRange(
+            start_ms=_samples_to_ms(item["start"]),
+            end_ms=_samples_to_ms(item["end"]),
+        )
+        for item in timestamps
+        if item["end"] > item["start"]
+    ]
+
+
+def _plan_chunk_ranges(
+    duration_ms: int,
+    speech_ranges: list[SpeechRange],
+    target_ms: int,
+) -> list[tuple[int, int]]:
+    if duration_ms <= target_ms:
+        return [(0, duration_ms)]
+
+    ranges: list[tuple[int, int]] = []
+    start_ms = 0
+    while duration_ms - start_ms > target_ms:
+        target_split = start_ms + target_ms
+        split_ms = _find_split_at_silence(start_ms, target_split, duration_ms, speech_ranges)
+        ranges.append((start_ms, split_ms))
+        start_ms = split_ms
+    ranges.append((start_ms, duration_ms))
+    return ranges
+
+
+def _find_split_at_silence(
+    chunk_start_ms: int,
+    target_split_ms: int,
+    duration_ms: int,
+    speech_ranges: list[SpeechRange],
+) -> int:
+    lower = max(chunk_start_ms + MIN_CHUNK_MS, target_split_ms - SPLIT_SEARCH_WINDOW_MS)
+    upper = min(duration_ms, target_split_ms + SPLIT_SEARCH_WINDOW_MS)
+    candidates = [
+        midpoint
+        for midpoint in _silence_midpoints(speech_ranges, duration_ms)
+        if lower <= midpoint <= upper
+    ]
+    if candidates:
+        return min(candidates, key=lambda point: abs(point - target_split_ms))
+    return min(target_split_ms, duration_ms)
+
+
+def _silence_midpoints(speech_ranges: list[SpeechRange], duration_ms: int) -> list[int]:
+    if not speech_ranges:
+        return []
+
+    ordered = sorted(speech_ranges, key=lambda item: item.start_ms)
+    midpoints: list[int] = []
+    previous_end = 0
+    for speech in ordered:
+        if speech.start_ms > previous_end:
+            midpoints.append((previous_end + speech.start_ms) // 2)
+        previous_end = max(previous_end, speech.end_ms)
+    if previous_end < duration_ms:
+        midpoints.append((previous_end + duration_ms) // 2)
+    return midpoints
+
+
+def _cut_audio_chunks(
+    audio: Path,
+    chunk_dir: Path,
+    ranges: list[tuple[int, int]],
+) -> list[AudioChunk]:
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    chunks: list[AudioChunk] = []
+    for index, (start_ms, end_ms) in enumerate(ranges, start=1):
+        chunk_path = chunk_dir / f"{audio.stem}.chunk{index:03d}.wav"
+        media.cut_audio(audio, chunk_path, start_ms, end_ms)
+        chunks.append(AudioChunk(index=index, start_ms=start_ms, end_ms=end_ms, path=chunk_path))
+    return chunks
+
+
+def _read_offset_cues(srt_path: Path, offset_ms: int) -> list[Cue]:
+    return [
+        Cue(
+            index=cue.index,
+            start_ms=cue.start_ms + offset_ms,
+            end_ms=cue.end_ms + offset_ms,
+            text=cue.text,
+        )
+        for cue in read_srt(srt_path)
+    ]
+
+
+def _samples_to_ms(samples: int) -> int:
+    return round(samples * 1000 / VAD_SAMPLE_RATE)

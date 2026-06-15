@@ -1,1 +1,4 @@
-# Faster-Whisper-XXL 为独立二进制，无需额外 Python 依赖
+# Faster-Whisper-XXL 为独立二进制；长音频分片使用 Silero VAD。
+silero-vad
+torch
+torchaudio
