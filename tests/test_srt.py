@@ -33,3 +33,14 @@ line
     assert cues[0].index == 1
     assert cues[0].start_ms == 60_000
     assert cues[0].text == "line"
+
+
+def test_parse_srt_adjusts_invalid_range():
+    cues = parse_srt(
+        """1
+00:01:00,000 --> 00:01:00,000
+line
+"""
+    )
+    assert cues[0].start_ms == 60_000
+    assert cues[0].end_ms == 60_100

@@ -40,7 +40,8 @@ def parse_srt(content: str) -> list[Cue]:
         start_ms = parse_time(start_text)
         end_ms = parse_time(end_text)
         if end_ms <= start_ms:
-            raise ValueError(f"无效的 SRT 时间轴范围: {timing!r}")
+            print(f"[srt] Warning: 检测到无效的 SRT 时间轴范围 '{timing}'，自动修正结束时间为开始时间 + 100 毫秒", flush=True)
+            end_ms = start_ms + 100
         cues.append(Cue(index=index, start_ms=start_ms, end_ms=end_ms, text="\n".join(text_lines)))
     return renumber(cues)
 
