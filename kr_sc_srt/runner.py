@@ -16,6 +16,7 @@ class CommandError(RuntimeError):
 
 
 def run(command: list[str], cwd: Path | None = None, capture: bool = False, env: dict[str, str] | None = None) -> str:
+    print(f"+ {' '.join(command)}", flush=True)
     process = subprocess.run(
         command,
         cwd=str(cwd) if cwd else None,

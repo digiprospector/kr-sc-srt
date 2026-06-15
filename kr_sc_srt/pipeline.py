@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Callable
 
 from . import asr, download, media
@@ -8,7 +10,6 @@ from .jobs import job_name_from_source
 from .segments import read_segments
 from .srt import crop, read_srt, write_srt
 from .state import JobState, StageResult, save_last_job
-from .translate import translate_cues
 
 
 class Pipeline:
@@ -36,8 +37,11 @@ class Pipeline:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.state.set_base(source=source, job_name=self.job_name, out_dir=str(self.out_dir))
         save_last_job(root, self.job_name, self.out_dir, source)
+        self.log(f"[{_timestamp()}] job: {self.job_name}")
+        self.log(f"[{_timestamp()}] output: {self.out_dir}")
 
-    def prepare(self, api_key: str | None, api_base: str, translation_model: str, asr_model: str) -> None:
+    def prepare(self, asr_model: str) -> None:
+        self.log(f"[{_timestamp()}] prepare started")
         low_video = self._stage(
             "download_low",
             {"source": self.source, "quality": "low", "cookies": str(self.cookies) if self.cookies else None},
@@ -77,18 +81,17 @@ class Pipeline:
             ),
         )
 
-        zh_srt = self.out_dir / "zh.srt"
-        self._stage(
-            "translate",
-            {"source_srt": str(ko_srt), "api_base": api_base, "model": translation_model},
-            [zh_srt],
-            lambda: self._translate_stage(ko_srt, zh_srt, api_key, api_base, translation_model),
-        )
+        self.log(f"[{_timestamp()}] Korean SRT ready: {ko_srt}")
+        self.log(f"[{_timestamp()}] Translate it locally, save Chinese subtitles as: {self.out_dir / 'zh.srt'}")
+        self.log(f"[{_timestamp()}] prepare completed")
 
     def render(self, segments_csv: Path, font: str) -> None:
+        self.log(f"[{_timestamp()}] render started")
         zh_srt = self.out_dir / "zh.srt"
         if not zh_srt.exists():
-            raise FileNotFoundError(f"First pass subtitle not found: {zh_srt}")
+            raise FileNotFoundError(
+                f"Chinese subtitle not found: {zh_srt}. Translate ko.srt locally and save the result as zh.srt."
+            )
 
         high_video = self._stage(
             "download_high",
@@ -136,18 +139,7 @@ class Pipeline:
 
         self.state.data["segments"] = segment_results
         self.state.save()
-
-    def _translate_stage(
-        self,
-        ko_srt: Path,
-        zh_srt: Path,
-        api_key: str | None,
-        api_base: str,
-        translation_model: str,
-    ) -> StageResult:
-        translated = translate_cues(read_srt(ko_srt), api_key=api_key, api_base=api_base, model=translation_model)
-        write_srt(zh_srt, translated)
-        return StageResult({"srt": str(zh_srt)})
+        self.log(f"[{_timestamp()}] render completed")
 
     def _segment_srt_stage(self, source_cues, start_ms: int, end_ms: int, target: Path) -> StageResult:
         write_srt(target, crop(source_cues, start_ms, end_ms))
@@ -162,15 +154,25 @@ class Pipeline:
     ) -> dict[str, str]:
         forced = self.force_all or name in self.force_stage
         if not forced and self.state.is_complete(name, params, required_outputs):
-            self.log(f"skip {name}")
+            self.log(f"[{_timestamp()}] skip {name}")
             return dict(self.state.stage(name).get("outputs", {}))
 
-        self.log(f"run {name}")
+        started = perf_counter()
+        self.log(f"[{_timestamp()}] start {name}")
         self.state.mark_running(name, params)
         try:
             result = action()
             self.state.mark_completed(name, params, result)
+            elapsed = perf_counter() - started
+            outputs = ", ".join(result.outputs.values())
+            self.log(f"[{_timestamp()}] done {name} in {elapsed:.1f}s -> {outputs}")
             return result.outputs
         except BaseException as exc:
             self.state.mark_failed(name, params, exc)
+            elapsed = perf_counter() - started
+            self.log(f"[{_timestamp()}] failed {name} after {elapsed:.1f}s: {exc}")
             raise
+
+
+def _timestamp() -> str:
+    return datetime.now().strftime("%H:%M:%S")

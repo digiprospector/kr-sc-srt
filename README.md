@@ -1,6 +1,6 @@
 # kr-sc-srt
 
-Two-pass workflow for public SOOP VOD Korean speech-to-Simplified-Chinese hard-sub videos.
+Two-pass workflow for public SOOP VOD Korean subtitles and Simplified-Chinese hard-sub videos.
 
 The project is designed for Colab first, with the same CLI available on Linux and Windows.
 
@@ -10,11 +10,11 @@ The project is designed for Colab first, with the same CLI available on Linux an
    - Downloads the lowest available video quality.
    - Extracts 16 kHz mono WAV audio.
    - Uses FunASR `iic/SenseVoiceSmall` to create `ko.srt`.
-   - Uses an OpenAI-compatible Chat Completions API to create `zh.srt`.
+   - Stops there so you can download `ko.srt` and translate it locally with the helper command.
    - Does not create a subtitled video.
 2. Second pass, `render`
    - Downloads the highest available video quality.
-   - Reads the first-pass `zh.srt`.
+   - Reads your locally translated `zh.srt` from the job output directory.
    - Reads a same-job CSV file describing segments.
    - Cuts each segment, retimes subtitles, and burns Chinese subtitles into MP4 files.
 
@@ -49,15 +49,20 @@ Install system tools:
 Example:
 
 ```bash
-kr-sc-srt prepare "https://vod.sooplive.com/player/198391511" \
-  --root ./work \
-  --api-key-env OPENAI_API_KEY
+kr-sc-srt prepare "https://vod.sooplive.com/player/198391511" --root ./work
 ```
 
 Resume the same first pass without typing the URL again:
 
 ```bash
 kr-sc-srt prepare --root ./work --resume-last
+```
+
+Translate the Korean SRT on your local machine:
+
+```bash
+kr-sc-srt translate-srt ./work/outputs/<job-name>/ko.srt ./work/outputs/<job-name>/zh.srt \
+  --api-key-env OPENAI_API_KEY
 ```
 
 Create a segment CSV at `./work/outputs/<job-name>/<job-name>.csv`:
@@ -70,6 +75,8 @@ part-02,00:05:00,00:08:30.500
 
 Run the second pass:
 
+Before rendering, upload or save the translated Chinese file as `zh.srt` in the same job output directory.
+
 ```bash
 kr-sc-srt render --root ./work --resume-last
 ```
@@ -78,10 +85,17 @@ kr-sc-srt render --root ./work --resume-last
 
 - `--model-cache-dir`: persistent FunASR/model cache. In Colab, use Google Drive.
 - `--resume-last`: load the URL and output directory from `<root>/last_job.json`.
-- `--force-stage STAGE`: rerun one stage, for example `--force-stage translate`.
+- `--force-stage STAGE`: rerun one stage, for example `--force-stage asr`.
 - `--force-all`: rerun every stage.
 - `--cookies cookies.txt`: optional yt-dlp cookies file. First version only guarantees public SOOP VODs.
 - `--segments file.csv`: explicit segment CSV for `render`.
+
+For local translation:
+
+- `translate-srt INPUT OUTPUT`: translate a Korean SRT into Chinese SRT without running video processing.
+- `--api-key-env`: environment variable containing the OpenAI-compatible API key.
+- `--api-base`: OpenAI-compatible API base URL.
+- `--translation-model`: chat model used for translation.
 
 ## Outputs
 
@@ -90,8 +104,9 @@ First pass:
 - `source.low.mp4` or equivalent yt-dlp output
 - `audio.wav`
 - `ko.srt`
-- `zh.srt`
 - `run.json`
+
+You create `zh.srt` locally with `translate-srt`, then upload or save it beside `ko.srt`.
 
 Second pass:
 
