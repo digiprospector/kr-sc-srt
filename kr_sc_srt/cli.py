@@ -20,7 +20,10 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out).expanduser().resolve() if args.out else None
 
     if args.resume_last:
-        last = load_last_job(root)
+        try:
+            last = load_last_job(root)
+        except FileNotFoundError as exc:
+            parser.error(f"{exc}. Set the source URL once, then use --resume-last on later runs.")
         source = source or last["source"]
         out_dir = out_dir or Path(last["out_dir"]).expanduser().resolve()
 
