@@ -60,12 +60,19 @@ def transcribe_to_srt(
         speech_pad_ms=vad_speech_pad_ms,
         temp_dir=output_dir / ".asr_chunks",
     )
+    print(f"[asr] 音频分片规划完成，共 {len(chunk_ranges)} 个分片:", flush=True)
+    for idx, (s, e) in enumerate(chunk_ranges, 1):
+        print(f"  分片 {idx}: {_format_ms(s)} -> {_format_ms(e)} (时长: {(e - s) / 1000:.1f}秒)", flush=True)
+
     chunks = _cut_audio_chunks(audio, output_dir / ".asr_chunks", chunk_ranges)
 
     merged: list[Cue] = []
     for chunk in chunks:
         chunk_srt = chunk.path.with_suffix(".srt")
-        _transcribe_single_audio(chunk.path, chunk_srt, model_name)
+        if not chunk_srt.exists():
+            _transcribe_single_audio(chunk.path, chunk_srt, model_name)
+        else:
+            print(f"[asr] 检测到分片字幕已存在，跳过 Whisper 识别: {chunk_srt}", flush=True)
         merged.extend(_read_offset_cues(chunk_srt, chunk.start_ms))
 
     if not merged:
@@ -80,6 +87,16 @@ def _transcribe_single_audio(audio: Path, output_srt: Path, model_name: str) -> 
     output_dir = output_srt.parent
     output_dir.mkdir(parents=True, exist_ok=True)
     output_srt.unlink(missing_ok=True)
+
+    # 尝试赋予 Whisper 二进制可执行权限
+    binary_path = Path(WHISPER_BINARY)
+    if binary_path.exists():
+        try:
+            import stat
+            st = binary_path.stat()
+            binary_path.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        except Exception as exc:
+            print(f"[asr] Warning: Failed to chmod +x {WHISPER_BINARY}: {exc}", flush=True)
 
     cmd = [
         WHISPER_BINARY,
@@ -150,6 +167,12 @@ def _detect_speech_ranges(
     ]
 
 
+def _format_ms(ms: int) -> str:
+    s, m = divmod(ms // 1000, 60)
+    h, m = divmod(s, 60)
+    return f"{h:02d}:{m:02d}:{s%60:02d}.{ms%1000:03d}"
+
+
 def _plan_chunk_ranges_with_windowed_vad(
     audio: Path,
     duration_ms: int,
@@ -192,15 +215,27 @@ def _plan_chunk_ranges_with_windowed_vad(
                 ]
                 if candidates:
                     split_ms = min(candidates, key=lambda point: abs(point - target_split))
+                    print(
+                        f"[asr] 在 VAD 搜索区间 [{_format_ms(lower_ms)} - {_format_ms(upper_ms)}] 内检测到 {len(candidates)} 个静音候选点，选择最接近目标点 ({_format_ms(target_split)}) 的位置: {_format_ms(split_ms)}",
+                        flush=True,
+                    )
                 else:
                     split_ms = min(target_split, duration_ms)
+                    print(
+                        f"[asr] 在 VAD 搜索区间 [{_format_ms(lower_ms)} - {_format_ms(upper_ms)}] 内未检测到静音点，执行兜底硬分割到: {_format_ms(split_ms)}",
+                        flush=True,
+                    )
             except Exception as exc:
-                print(f"[asr] Warning: VAD failed on window [{lower_ms}, {upper_ms}]: {exc}. Falling back to hard split.")
                 split_ms = min(target_split, duration_ms)
+                print(
+                    f"[asr] Warning: VAD failed on window [{_format_ms(lower_ms)} - {_format_ms(upper_ms)}]: {exc}。兜底硬分割到: {_format_ms(split_ms)}",
+                    flush=True,
+                )
             finally:
                 temp_vad_wav.unlink(missing_ok=True)
         else:
             split_ms = min(target_split, duration_ms)
+            print(f"[asr] 窗口无效，硬分割到: {_format_ms(split_ms)}", flush=True)
 
         ranges.append((start_ms, split_ms))
         start_ms = split_ms
@@ -238,7 +273,10 @@ def _cut_audio_chunks(
     chunks: list[AudioChunk] = []
     for index, (start_ms, end_ms) in enumerate(ranges, start=1):
         chunk_path = chunk_dir / f"{audio.stem}.chunk{index:03d}.wav"
-        media.cut_audio(audio, chunk_path, start_ms, end_ms)
+        if not chunk_path.exists():
+            media.cut_audio(audio, chunk_path, start_ms, end_ms)
+        else:
+            print(f"[asr] 检测到分片音频已存在，跳过音频截取: {chunk_path}", flush=True)
         chunks.append(AudioChunk(index=index, start_ms=start_ms, end_ms=end_ms, path=chunk_path))
     return chunks
 
