@@ -1,2 +1,1 @@
-funasr>=1.2.0
-modelscope>=1.17.0
+# Faster-Whisper-XXL 为独立二进制，无需额外 Python 依赖

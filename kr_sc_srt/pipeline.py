@@ -42,7 +42,7 @@ class Pipeline:
         self.log(f"[{_timestamp()}] 任务: {self.job_name}")
         self.log(f"[{_timestamp()}] 输出目录: {self.out_dir}")
 
-    def prepare(self, asr_model: str, asr_chunk_s: int = asr.DEFAULT_CHUNK_S) -> None:
+    def prepare(self, asr_model: str = asr.DEFAULT_MODEL) -> None:
         self.log(f"[{_timestamp()}] prepare 阶段已启动")
         low_video = self._stage(
             "download_low",
@@ -65,8 +65,6 @@ class Pipeline:
         asr_params = {
             "audio": str(audio_path),
             "model": asr_model,
-            "model_cache_dir": str(self.model_cache_dir) if self.model_cache_dir else None,
-            "asr_chunk_s": asr_chunk_s,
         }
 
         # 如果在 Colab 中处于 CPU 运行模式，则停止执行并提示用户切换到 GPU 运行时
@@ -106,9 +104,7 @@ class Pipeline:
                         asr.transcribe_to_srt(
                             audio_path,
                             ko_srt,
-                            model_cache_dir=self.model_cache_dir,
                             model_name=asr_model,
-                            chunk_duration_s=asr_chunk_s,
                         )
                     )
                 }

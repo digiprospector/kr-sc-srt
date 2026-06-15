@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.command == "prepare":
-        pipeline.prepare(asr_model=args.asr_model, asr_chunk_s=args.asr_chunk_s)
+        pipeline.prepare(asr_model=args.asr_model)
     elif args.command == "render":
         segments = Path(args.segments).expanduser().resolve() if args.segments else pipeline.out_dir / f"{pipeline.job_name}.csv"
         pipeline.render(segments, font=args.font)
@@ -73,13 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     prepare = subparsers.add_parser("prepare", help="第一阶段：低画质下载和韩语 ASR 语音识别。")
     _add_common(prepare)
-    prepare.add_argument("--asr-model", default=asr.DEFAULT_MODEL, help="FunASR 模型 ID。")
-    prepare.add_argument(
-        "--asr-chunk-s",
-        type=int,
-        default=asr.DEFAULT_CHUNK_S,
-        help="ASR 语音识别音频分片时长（秒）。",
-    )
+    prepare.add_argument("--asr-model", default=asr.DEFAULT_MODEL, help="Whisper 模型名称（如 large-v2、medium 等）。")
 
     render = subparsers.add_parser("render", help="第二阶段：高画质下载、分段并烧录字幕。")
     _add_common(render)
@@ -101,7 +95,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("source", nargs="?", help="SOOP VOD URL 或本地视频文件。")
     parser.add_argument("--root", default=str(default_root()), help="持久化根目录。")
     parser.add_argument("--out", help="任务输出目录。")
-    parser.add_argument("--model-cache-dir", help="持久化 FunASR/模型缓存目录。")
+    parser.add_argument("--model-cache-dir", help="持久化模型缓存目录。")
     parser.add_argument("--cookies", help="可选，用于 yt-dlp 的 cookies.txt 路径。")
     parser.add_argument("--resume-last", action="store_true", help="复用根目录中上一次的 URL 和输出目录。")
     parser.add_argument("--force-stage", action="append", help="强制重新运行某个阶段。可多次指定。")

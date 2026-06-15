@@ -20,13 +20,12 @@ def test_cli_prepare_resume_last_uses_saved_url(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(cli, "Pipeline", FakePipeline)
 
-    code = cli.main(["prepare", "--root", str(tmp_path), "--resume-last", "--asr-chunk-s", "45"])
+    code = cli.main(["prepare", "--root", str(tmp_path), "--resume-last"])
 
     assert code == 0
     assert captured["source"] == "https://example.test/vod"
     assert captured["out_dir"] == out_dir.resolve()
     assert captured["prepare"]["asr_model"]
-    assert captured["prepare"]["asr_chunk_s"] == 45
 
 
 def test_cli_prepare_resume_last_without_saved_job_explains_first_run(tmp_path: Path, capsys):
