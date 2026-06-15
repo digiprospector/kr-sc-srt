@@ -55,6 +55,7 @@ def transcribe_to_srt(
         trust_remote_code=True,
         disable_update=True,
         device=device,
+        output_timestamp=True,
     )
 
     cues = _transcribe_chunked(model, audio, language, chunk_duration_s)
@@ -114,6 +115,7 @@ def _transcribe_chunked(
                     use_itn=True,
                     merge_vad=True,
                     merge_length_s=15,
+                    output_timestamp=True,
                 )
                 print(f"[asr] 分片 {idx} 原始结果: {result}", flush=True)
                 chunk_cues = _result_to_cues(
@@ -159,6 +161,8 @@ def _result_to_cues(
     for item in items:
         if not isinstance(item, dict):
             continue
+        
+        # 1. 优先使用句子级时间戳（如 sentence_info 或 sentences）
         sentence_info = item.get("sentence_info") or item.get("sentences") or []
         for sentence in sentence_info:
             text = _clean_text(str(sentence.get("text", "")))
@@ -169,7 +173,88 @@ def _result_to_cues(
             if end > start:
                 cues.append(Cue(index=len(cues) + 1, start_ms=start, end_ms=end, text=text))
 
-        # 兜底方案：模型返回了文本，但没有句子级时间戳。
+        # 2. 如果没有句子级时间戳，但有字词级时间戳（timestamp 字段），在本地进行句度分割聚合
+        if not cues:
+            raw_timestamp = item.get("timestamp") or []
+            cleaned_text = _clean_text(item.get("text", ""))
+            
+            raw_tokens: list[dict[str, Any]] = []
+            if raw_timestamp:
+                first_elem = raw_timestamp[0]
+                # 2.1 支持 [word, start, end] 格式
+                if isinstance(first_elem, (list, tuple)) and len(first_elem) >= 3:
+                    for elem in raw_timestamp:
+                        if isinstance(elem, (list, tuple)) and len(elem) >= 3:
+                            w = _clean_text(str(elem[0]))
+                            if w:
+                                raw_tokens.append({
+                                    "text": w,
+                                    "start": int(elem[1]),
+                                    "end": int(elem[2])
+                                })
+                # 2.2 支持 [start, end] 格式，需与 cleaned_text 的词或字进行绑定
+                elif isinstance(first_elem, (list, tuple)) and len(first_elem) == 2:
+                    words = cleaned_text.split()
+                    if len(words) == len(raw_timestamp):
+                        for w, elem in zip(words, raw_timestamp):
+                            raw_tokens.append({
+                                "text": w,
+                                "start": int(elem[0]),
+                                "end": int(elem[1])
+                            })
+                    else:
+                        # 如果非空格分隔（如中文或字符级时间戳），则与去空格后的字符绑定
+                        chars = [c for c in cleaned_text if not c.isspace()]
+                        if len(chars) == len(raw_timestamp):
+                            for c, elem in zip(chars, raw_timestamp):
+                                raw_tokens.append({
+                                    "text": c,
+                                    "start": int(elem[0]),
+                                    "end": int(elem[1])
+                                })
+                        else:
+                            # 长度仍不匹配时，进行最小长度对齐截断
+                            min_len = min(len(chars), len(raw_timestamp))
+                            for i in range(min_len):
+                                raw_tokens.append({
+                                    "text": chars[i],
+                                    "start": int(raw_timestamp[i][0]),
+                                    "end": int(raw_timestamp[i][1])
+                                })
+
+            # 2.3 将解析出的字词级 token 按停顿（Gap）、时长和字数聚合为字幕行
+            if raw_tokens:
+                max_gap_ms = 800        # 静音停顿超过 0.8 秒切分
+                max_duration_ms = 4000  # 单行字幕最长 4 秒
+                max_text_len = 36       # 单行字幕最长 36 字符
+
+                curr_tokens: list[dict[str, Any]] = []
+                for tok in raw_tokens:
+                    if not curr_tokens:
+                        curr_tokens.append(tok)
+                        continue
+
+                    prev_tok = curr_tokens[-1]
+                    gap = tok["start"] - prev_tok["end"]
+                    curr_duration = tok["end"] - curr_tokens[0]["start"]
+                    curr_text = " ".join([t["text"] for t in curr_tokens]) + " " + tok["text"]
+
+                    if gap > max_gap_ms or curr_duration > max_duration_ms or len(curr_text) > max_text_len:
+                        cue_text = " ".join([t["text"] for t in curr_tokens])
+                        start = curr_tokens[0]["start"] + offset_ms
+                        end = curr_tokens[-1]["end"] + offset_ms
+                        cues.append(Cue(index=len(cues) + 1, start_ms=start, end_ms=end, text=cue_text))
+                        curr_tokens = [tok]
+                    else:
+                        curr_tokens.append(tok)
+
+                if curr_tokens:
+                    cue_text = " ".join([t["text"] for t in curr_tokens])
+                    start = curr_tokens[0]["start"] + offset_ms
+                    end = curr_tokens[-1]["end"] + offset_ms
+                    cues.append(Cue(index=len(cues) + 1, start_ms=start, end_ms=end, text=cue_text))
+
+        # 3. 兜底方案：模型仅返回了 text，但既没有句子级时间戳也没有有效词级时间戳。
         if not cues and item.get("text"):
             text = _clean_text(str(item["text"]))
             if text:
@@ -181,7 +266,7 @@ def _result_to_cues(
                     duration = 1000
                 cues.append(
                     Cue(
-                        index=1,
+                        index=len(cues) + 1,
                         start_ms=offset_ms,
                         end_ms=offset_ms + max(1000, duration),
                         text=text,
