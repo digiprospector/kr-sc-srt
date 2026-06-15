@@ -19,6 +19,7 @@ def download_with_ytdlp(source: str, out_dir: Path, stem: str, quality: str, coo
         selector,
         "--merge-output-format",
         "mp4",
+        "--newline",
         "-o",
         template,
         "--print",
@@ -28,7 +29,7 @@ def download_with_ytdlp(source: str, out_dir: Path, stem: str, quality: str, coo
         command.extend(["--cookies", str(cookies)])
     command.append(source)
 
-    output = runner.run(command, capture=True)
+    output = runner.run(command, capture_stdout_only=True)
     candidates = [Path(line.strip()) for line in output.splitlines() if line.strip()]
     for candidate in reversed(candidates):
         if candidate.exists() and candidate.stat().st_size > 0:

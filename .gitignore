@@ -3,3 +3,13 @@ __pycache__/
 .pytest_cache/
 .pytest_tmp/
 kr-sc-srt-work/
+
+# AI Agents & IDE
+.agent/
+.agents/
+.antigravity/
+.cursor/
+.clinerules
+.vscode/
+.claude/
+.codex/

@@ -15,15 +15,37 @@ class CommandError(RuntimeError):
         )
 
 
-def run(command: list[str], cwd: Path | None = None, capture: bool = False, env: dict[str, str] | None = None) -> str:
+def run(
+    command: list[str],
+    cwd: Path | None = None,
+    capture: bool = False,
+    capture_stdout_only: bool = False,
+    env: dict[str, str] | None = None,
+) -> str:
+    """Run a command and return stdout when captured.
+
+    Args:
+        capture: Capture both stdout and stderr (command runs silently).
+        capture_stdout_only: Capture stdout for parsing but let stderr pass
+            through to the terminal so progress output remains visible.
+    """
     print(f"+ {' '.join(command)}", flush=True)
+    if capture_stdout_only:
+        pipe_stdout = subprocess.PIPE
+        pipe_stderr = None  # inherit – visible in terminal
+    elif capture:
+        pipe_stdout = subprocess.PIPE
+        pipe_stderr = subprocess.PIPE
+    else:
+        pipe_stdout = None
+        pipe_stderr = None
     process = subprocess.run(
         command,
         cwd=str(cwd) if cwd else None,
         env=env,
         text=True,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.PIPE if capture else None,
+        stdout=pipe_stdout,
+        stderr=pipe_stderr,
         check=False,
     )
     stdout = process.stdout or ""
