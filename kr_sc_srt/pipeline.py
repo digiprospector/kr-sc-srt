@@ -59,14 +59,43 @@ class Pipeline:
         )
 
         ko_srt = self.out_dir / "ko.srt"
+        asr_params = {
+            "audio": str(audio_path),
+            "model": asr_model,
+            "model_cache_dir": str(self.model_cache_dir) if self.model_cache_dir else None,
+            "asr_chunk_s": asr_chunk_s,
+        }
+
+        # Halt and prompt the user to switch to a GPU runtime if on CPU in Colab
+        import os
+        is_colab = "COLAB_RELEASE_TAG" in os.environ or Path("/content").exists()
+        is_forced = self.force_all or "asr" in self.force_stage
+        if is_colab and (is_forced or not self.state.is_complete("asr", asr_params, [ko_srt])):
+            has_gpu = False
+            try:
+                import torch
+                has_gpu = torch.cuda.is_available()
+            except ImportError:
+                pass
+            if not has_gpu:
+                raise RuntimeError(
+                    "\n"
+                    "=========================================================================\n"
+                    "🔴 GPU NOT DETECTED (CPU runtime active)\n"
+                    "=========================================================================\n"
+                    "Audio extraction completed successfully. To run ASR (Speech-to-Text)\n"
+                    "quickly and avoid out-of-memory (OOM) errors, please switch to a GPU:\n"
+                    "\n"
+                    "  1. In the top menu, go to: Runtime -> Change runtime type\n"
+                    "  2. Select Hardware accelerator: T4 GPU\n"
+                    "  3. Click: Save\n"
+                    "  4. Re-run this cell to resume ASR using the GPU (prior steps will be skipped).\n"
+                    "========================================================================="
+                )
+
         self._stage(
             "asr",
-            {
-                "audio": str(audio_path),
-                "model": asr_model,
-                "model_cache_dir": str(self.model_cache_dir) if self.model_cache_dir else None,
-                "asr_chunk_s": asr_chunk_s,
-            },
+            asr_params,
             [ko_srt],
             lambda: StageResult(
                 {
