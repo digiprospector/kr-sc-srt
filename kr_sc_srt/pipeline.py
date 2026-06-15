@@ -50,7 +50,7 @@ class Pipeline:
         )["video"]
         low_video_path = Path(low_video)
 
-        audio_path = self.out_dir / "audio.wav"
+        audio_path = self.out_dir / "audio.aac"
         self._stage(
             "extract_audio",
             {"video": str(low_video_path)},

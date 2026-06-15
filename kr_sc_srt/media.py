@@ -15,12 +15,8 @@ def extract_audio(video: Path, audio: Path) -> Path:
             "-i",
             str(video),
             "-vn",
-            "-acodec",
-            "pcm_s16le",
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
+            "-c:a",
+            "copy",
             str(audio),
         ]
     )
