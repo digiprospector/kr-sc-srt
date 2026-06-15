@@ -20,6 +20,7 @@ def download_with_ytdlp(source: str, out_dir: Path, stem: str, quality: str, coo
         "--merge-output-format",
         "mp4",
         "--newline",
+        "--progress",
         "-o",
         template,
         "--print",
