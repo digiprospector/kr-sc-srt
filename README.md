@@ -65,6 +65,16 @@ kr-sc-srt translate-srt ./work/outputs/<job-name>/ko.srt ./work/outputs/<job-nam
   --api-key-env OPENAI_API_KEY
 ```
 
+Or translate using DeepSeek API:
+
+```bash
+kr-sc-srt translate-srt ./work/outputs/<job-name>/ko.srt ./work/outputs/<job-name>/zh.srt \
+  --api-base "https://api.deepseek.com/v1" \
+  --translation-model "deepseek-chat" \
+  --api-key "YOUR_DEEPSEEK_API_KEY"
+```
+
+
 Create a segment CSV at `./work/outputs/<job-name>/<job-name>.csv`:
 
 ```csv
@@ -89,6 +99,8 @@ kr-sc-srt render --root ./work --resume-last
 - `--force-all`: rerun every stage.
 - `--cookies cookies.txt`: optional yt-dlp cookies file. First version only guarantees public SOOP VODs.
 - `--segments file.csv`: explicit segment CSV for `render`.
+- `--asr-chunk-s SECONDS`: ASR audio chunk size in seconds (default: 180).
+- `--test`: test mode, only extract and process the first 5 minutes of audio.
 
 For local translation:
 
@@ -102,7 +114,7 @@ For local translation:
 First pass:
 
 - `source.low.mp4` or equivalent yt-dlp output
-- `audio.wav`
+- `audio.aac`
 - `ko.srt`
 - `run.json`
 
