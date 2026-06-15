@@ -51,13 +51,15 @@ def transcribe_to_srt(
     if duration_ms <= target_ms:
         return _transcribe_single_audio(audio, output_srt, model_name)
 
-    speech_ranges = _detect_speech_ranges(
-        audio,
+    chunk_ranges = _plan_chunk_ranges_with_windowed_vad(
+        audio=audio,
+        duration_ms=duration_ms,
+        target_ms=target_ms,
         threshold=vad_threshold,
         min_silence_ms=vad_min_silence_ms,
         speech_pad_ms=vad_speech_pad_ms,
+        temp_dir=output_dir / ".asr_chunks",
     )
-    chunk_ranges = _plan_chunk_ranges(duration_ms, speech_ranges, target_ms)
     chunks = _cut_audio_chunks(audio, output_dir / ".asr_chunks", chunk_ranges)
 
     merged: list[Cue] = []
@@ -148,56 +150,82 @@ def _detect_speech_ranges(
     ]
 
 
-def _plan_chunk_ranges(
+def _plan_chunk_ranges_with_windowed_vad(
+    audio: Path,
     duration_ms: int,
-    speech_ranges: list[SpeechRange],
     target_ms: int,
+    threshold: float,
+    min_silence_ms: int,
+    speech_pad_ms: int,
+    temp_dir: Path,
 ) -> list[tuple[int, int]]:
     if duration_ms <= target_ms:
         return [(0, duration_ms)]
 
     ranges: list[tuple[int, int]] = []
     start_ms = 0
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
     while duration_ms - start_ms > target_ms:
         target_split = start_ms + target_ms
-        split_ms = _find_split_at_silence(start_ms, target_split, duration_ms, speech_ranges)
+        lower_ms = max(start_ms + MIN_CHUNK_MS, target_split - SPLIT_SEARCH_WINDOW_MS)
+        upper_ms = min(duration_ms, target_split + SPLIT_SEARCH_WINDOW_MS)
+
+        if upper_ms > lower_ms:
+            temp_vad_wav = temp_dir / f"vad_temp_{lower_ms}_{upper_ms}.wav"
+            try:
+                media.cut_audio(audio, temp_vad_wav, lower_ms, upper_ms)
+                relative_ranges = _detect_speech_ranges(
+                    temp_vad_wav,
+                    threshold=threshold,
+                    min_silence_ms=min_silence_ms,
+                    speech_pad_ms=speech_pad_ms,
+                )
+                speech_ranges = [
+                    SpeechRange(r.start_ms + lower_ms, r.end_ms + lower_ms)
+                    for r in relative_ranges
+                ]
+                candidates = [
+                    midpoint
+                    for midpoint in _silence_midpoints_in_window(speech_ranges, lower_ms, upper_ms)
+                    if lower_ms <= midpoint <= upper_ms
+                ]
+                if candidates:
+                    split_ms = min(candidates, key=lambda point: abs(point - target_split))
+                else:
+                    split_ms = min(target_split, duration_ms)
+            except Exception as exc:
+                print(f"[asr] Warning: VAD failed on window [{lower_ms}, {upper_ms}]: {exc}. Falling back to hard split.")
+                split_ms = min(target_split, duration_ms)
+            finally:
+                temp_vad_wav.unlink(missing_ok=True)
+        else:
+            split_ms = min(target_split, duration_ms)
+
         ranges.append((start_ms, split_ms))
         start_ms = split_ms
+
     ranges.append((start_ms, duration_ms))
     return ranges
 
 
-def _find_split_at_silence(
-    chunk_start_ms: int,
-    target_split_ms: int,
-    duration_ms: int,
+def _silence_midpoints_in_window(
     speech_ranges: list[SpeechRange],
-) -> int:
-    lower = max(chunk_start_ms + MIN_CHUNK_MS, target_split_ms - SPLIT_SEARCH_WINDOW_MS)
-    upper = min(duration_ms, target_split_ms + SPLIT_SEARCH_WINDOW_MS)
-    candidates = [
-        midpoint
-        for midpoint in _silence_midpoints(speech_ranges, duration_ms)
-        if lower <= midpoint <= upper
-    ]
-    if candidates:
-        return min(candidates, key=lambda point: abs(point - target_split_ms))
-    return min(target_split_ms, duration_ms)
-
-
-def _silence_midpoints(speech_ranges: list[SpeechRange], duration_ms: int) -> list[int]:
+    window_start_ms: int,
+    window_end_ms: int,
+) -> list[int]:
     if not speech_ranges:
-        return []
+        return [(window_start_ms + window_end_ms) // 2]
 
     ordered = sorted(speech_ranges, key=lambda item: item.start_ms)
     midpoints: list[int] = []
-    previous_end = 0
+    previous_end = window_start_ms
     for speech in ordered:
         if speech.start_ms > previous_end:
             midpoints.append((previous_end + speech.start_ms) // 2)
         previous_end = max(previous_end, speech.end_ms)
-    if previous_end < duration_ms:
-        midpoints.append((previous_end + duration_ms) // 2)
+    if previous_end < window_end_ms:
+        midpoints.append((previous_end + window_end_ms) // 2)
     return midpoints
 
 

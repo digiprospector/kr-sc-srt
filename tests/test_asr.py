@@ -101,29 +101,33 @@ def test_transcribe_short_audio_missing_output_raises(tmp_path: Path):
             asr.transcribe_to_srt(audio, output_srt)
 
 
-def test_plan_chunk_ranges_uses_nearby_silence():
+def test_silence_midpoints_in_window():
     minute = 60 * 1000
-    ranges = asr._plan_chunk_ranges(
-        duration_ms=70 * minute,
-        speech_ranges=[
-            asr.SpeechRange(0, 29 * minute),
-            asr.SpeechRange(31 * minute, 70 * minute),
-        ],
-        target_ms=30 * minute,
+    # 窗口: [25分钟, 35分钟]
+    # 语音区间: [26分钟, 29分钟], [31分钟, 34分钟]
+    # 静音中点应为: 25.5分钟, 30.0分钟, 34.5分钟
+    speech_ranges = [
+        asr.SpeechRange(26 * minute, 29 * minute),
+        asr.SpeechRange(31 * minute, 34 * minute),
+    ]
+    midpoints = asr._silence_midpoints_in_window(
+        speech_ranges,
+        window_start_ms=25 * minute,
+        window_end_ms=35 * minute,
     )
+    assert midpoints == [25.5 * minute, 30.0 * minute, 34.5 * minute]
 
-    assert ranges == [(0, 30 * minute), (30 * minute, 60 * minute), (60 * minute, 70 * minute)]
 
-
-def test_plan_chunk_ranges_hard_splits_without_silence():
+def test_silence_midpoints_in_window_empty():
     minute = 60 * 1000
-    ranges = asr._plan_chunk_ranges(
-        duration_ms=65 * minute,
-        speech_ranges=[asr.SpeechRange(0, 65 * minute)],
-        target_ms=30 * minute,
+    # 窗口: [25分钟, 35分钟]，无语音区间
+    # 应返回窗口的几何中点: 30分钟
+    midpoints = asr._silence_midpoints_in_window(
+        [],
+        window_start_ms=25 * minute,
+        window_end_ms=35 * minute,
     )
-
-    assert ranges == [(0, 30 * minute), (30 * minute, 60 * minute), (60 * minute, 65 * minute)]
+    assert midpoints == [30 * minute]
 
 
 def test_transcribe_long_audio_merges_offset_chunk_srts(tmp_path: Path):
@@ -152,9 +156,8 @@ def test_transcribe_long_audio_merges_offset_chunk_srts(tmp_path: Path):
         patch(
             "kr_sc_srt.asr._detect_speech_ranges",
             return_value=[
-                asr.SpeechRange(0, 29 * minute),
-                asr.SpeechRange(31 * minute, 59 * minute),
-                asr.SpeechRange(61 * minute, 65 * minute),
+                asr.SpeechRange(0, 4 * minute),
+                asr.SpeechRange(6 * minute, 10 * minute),
             ],
         ),
         patch("kr_sc_srt.asr.media.cut_audio", side_effect=fake_cut_audio),
@@ -163,7 +166,13 @@ def test_transcribe_long_audio_merges_offset_chunk_srts(tmp_path: Path):
         result = asr.transcribe_to_srt(audio, output_srt, chunk_minutes=30)
 
     cues = read_srt(result)
-    assert cut_calls == [(0, 30 * minute), (30 * minute, 60 * minute), (60 * minute, 65 * minute)]
+    assert cut_calls == [
+        (25 * minute, 35 * minute),
+        (55 * minute, 65 * minute),
+        (0, 30 * minute),
+        (30 * minute, 60 * minute),
+        (60 * minute, 65 * minute),
+    ]
     assert [cue.start_ms for cue in cues] == [1_000, 30 * minute + 1_000, 60 * minute + 1_000]
     assert [cue.index for cue in cues] == [1, 2, 3]
 
