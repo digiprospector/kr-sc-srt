@@ -64,6 +64,11 @@ class JobState:
 
     def is_complete(self, name: str, params: dict[str, Any], required_outputs: list[Path]) -> bool:
         stage = self.stage(name)
+        if required_outputs and all(output.exists() and output.stat().st_size > 0 for output in required_outputs):
+            # 如果参数发生明确变更，则不跳过（需要重新运行）；否则直接认为任务已完成
+            if not (stage and stage.get("params") != params):
+                return True
+
         if stage.get("status") != "completed":
             return False
         if stage.get("params") != params:
