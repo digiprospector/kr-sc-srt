@@ -6,20 +6,20 @@ from . import runner
 from .timecode import format_ffmpeg_time
 
 
-def extract_audio(video: Path, audio: Path) -> Path:
+def extract_audio(video: Path, audio: Path, limit_s: int | None = None) -> Path:
     audio.parent.mkdir(parents=True, exist_ok=True)
-    runner.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(video),
-            "-vn",
-            "-c:a",
-            "copy",
-            str(audio),
-        ]
-    )
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video),
+        "-vn",
+    ]
+    if limit_s is not None:
+        cmd.extend(["-t", str(limit_s)])
+    cmd.extend(["-c:a", "copy", str(audio)])
+    
+    runner.run(cmd)
     return audio
 
 

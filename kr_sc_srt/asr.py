@@ -13,9 +13,8 @@ from .srt import Cue, renumber, write_srt
 DEFAULT_MODEL = "iic/SenseVoiceSmall"
 _LANG_TAG_RE = re.compile(r"<\|[^>]+?\|>")
 
-# 30 seconds per chunk – small enough to avoid OOM, large enough for good
-# sentence boundary detection with merge_vad.
-DEFAULT_CHUNK_S = 30
+# 每个分片 180 秒 - 在 ASR 上下文与内存安全之间取得良好平衡。
+DEFAULT_CHUNK_S = 180
 
 
 def transcribe_to_srt(
@@ -26,10 +25,10 @@ def transcribe_to_srt(
     language: str = "ko",
     chunk_duration_s: int = DEFAULT_CHUNK_S,
 ) -> Path:
-    """Transcribe *audio* to an SRT file using FunASR SenseVoice.
+    """使用 FunASR SenseVoice 将音频 *audio* 转录为 SRT 文件。
 
-    The audio is split into fixed-length chunks (default 30 s) to keep peak
-    memory low enough for Colab free-tier (≈12 GB RAM).
+    音频会被切分为固定长度的分片（默认 30 秒），以保持较低的内存占用峰值，
+    适配 Colab 免费层（约 12 GB 内存）。
     """
     if model_cache_dir:
         model_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -39,7 +38,7 @@ def transcribe_to_srt(
     try:
         from funasr import AutoModel
     except ImportError as exc:
-        raise RuntimeError("FunASR is not installed. Install requirements.txt first.") from exc
+        raise RuntimeError("未安装 FunASR。请先运行 pip install -r requirements.txt 安装依赖。") from exc
 
     try:
         import torch
@@ -47,10 +46,12 @@ def transcribe_to_srt(
     except ImportError:
         device = "cpu"
 
-    print(f"[asr] device={device}, chunk={chunk_duration_s}s", flush=True)
+    print(f"[asr] 设备={device}, 分片={chunk_duration_s}秒", flush=True)
 
     model = AutoModel(
         model=model_name,
+        vad_model="fsmn-vad",
+        vad_kwargs={"max_single_segment_time": 30000},
         trust_remote_code=True,
         disable_update=True,
         device=device,
@@ -71,21 +72,21 @@ def _transcribe_chunked(
     language: str,
     chunk_s: int,
 ) -> list[Cue]:
-    """Split *audio* with pydub, run ASR per chunk, merge results."""
+    """使用 pydub 分割音频 *audio*，对每个分片运行 ASR 语音识别，然后合并结果。"""
     try:
         from pydub import AudioSegment
     except ImportError as exc:
         raise RuntimeError(
-            "pydub is not installed.  pip install pydub"
+            "未安装 pydub。请运行 pip install pydub 安装。"
         ) from exc
 
-    print(f"[asr] loading audio: {audio}", flush=True)
+    print(f"[asr] 正在加载音频: {audio}", flush=True)
     full_audio = AudioSegment.from_file(str(audio))
     total_ms = len(full_audio)
     chunk_ms = chunk_s * 1000
     n_chunks = (total_ms + chunk_ms - 1) // chunk_ms
     print(
-        f"[asr] total={total_ms / 1000:.1f}s, splitting into {n_chunks} chunks",
+        f"[asr] 总时长={total_ms / 1000:.1f}秒，正在分割为 {n_chunks} 个分片",
         flush=True,
     )
 
@@ -102,8 +103,8 @@ def _transcribe_chunked(
             segment.export(str(temp_path), format="wav")
 
             print(
-                f"[asr] chunk {idx}/{n_chunks}: "
-                f"{start_ms / 1000:.1f}s – {end_ms / 1000:.1f}s ...",
+                f"[asr] 分片 {idx}/{n_chunks}: "
+                f"{start_ms / 1000:.1f}秒 – {end_ms / 1000:.1f}秒 ...",
                 flush=True,
             )
 
@@ -123,18 +124,18 @@ def _transcribe_chunked(
                 )
                 all_cues.extend(chunk_cues)
             except Exception as exc:
-                print(f"[asr] chunk {idx} failed: {exc}", flush=True)
+                print(f"[asr] 分片 {idx} 失败: {exc}", flush=True)
                 raise
             finally:
                 temp_path.unlink(missing_ok=True)
 
-            # hint the GC to free temporary tensors between chunks
+            # 提示 GC 在分片之间释放临时张量
             gc.collect()
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if not all_cues:
-        raise RuntimeError("FunASR returned no transcribable text")
+        raise RuntimeError("FunASR 未返回任何可转录的文本")
 
     return renumber(all_cues)
 
@@ -149,10 +150,10 @@ def _result_to_cues(
     fallback_duration_ms: int = 0,
     audio: Path | None = None,
 ) -> list[Cue]:
-    """Convert FunASR generate() output to a list of :class:`Cue`.
+    """将 FunASR generate() 的输出转换为 :class:`Cue` 列表。
 
-    When *offset_ms* is non-zero, all timestamps are shifted forward so that
-    per-chunk results land on the correct global timeline.
+    当 *offset_ms* 不为零时，所有时间戳都会向前偏移，
+    以便每个分片的结果能够对应到正确的全局时间线上。
     """
     items = result if isinstance(result, list) else [result]
     cues: list[Cue] = []
@@ -169,7 +170,7 @@ def _result_to_cues(
             if end > start:
                 cues.append(Cue(index=len(cues) + 1, start_ms=start, end_ms=end, text=text))
 
-        # Fallback: model returned text but no sentence-level timestamps.
+        # 兜底方案：模型返回了文本，但没有句子级时间戳。
         if not cues and item.get("text"):
             text = _clean_text(str(item["text"]))
             if text:

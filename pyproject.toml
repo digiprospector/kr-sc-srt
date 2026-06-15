@@ -24,3 +24,9 @@ kr-sc-srt = "kr_sc_srt.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+exclude = ["notebooks"]
+
+[tool.mypy]
+ignore_missing_imports = true

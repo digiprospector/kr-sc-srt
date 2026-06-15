@@ -19,7 +19,7 @@ def read_json(path: Path, default: dict[str, Any] | None = None) -> dict[str, An
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON file: {path}") from exc
+        raise ValueError(f"无效的 JSON 文件: {path}") from exc
 
 
 def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
@@ -121,5 +121,5 @@ def load_last_job(root: Path) -> dict[str, Any]:
     path = root / "last_job.json"
     data = read_json(path)
     if not data.get("source") or not data.get("out_dir"):
-        raise FileNotFoundError(f"No resumable job found at {path}")
+        raise FileNotFoundError(f"在 {path} 下未找到可恢复的任务")
     return data

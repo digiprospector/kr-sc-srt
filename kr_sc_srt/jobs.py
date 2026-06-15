@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from pathlib import Path
 
@@ -15,10 +14,14 @@ def default_root() -> Path:
 def job_name_from_source(source: str) -> str:
     local = Path(source)
     if local.exists():
-        stem = local.stem
-    else:
-        digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:8]
-        stem = source.rstrip("/").split("/")[-1] or "job"
-        stem = f"{stem}-{digest}"
-    cleaned = _SAFE_RE.sub("_", stem).strip("._-")
-    return cleaned or "job"
+        return local.stem
+
+    url_path = source.split("?")[0].split("#")[0]
+    parts = url_path.rstrip("/").split("/")
+    if parts:
+        last_part = parts[-1]
+        match = re.search(r"\d+", last_part)
+        if match:
+            return match.group(0)
+        return _SAFE_RE.sub("_", last_part).strip("._-") or "job"
+    return "job"

@@ -26,7 +26,7 @@ def safe_name(value: str) -> str:
 
 def read_segments(path: Path) -> list[Segment]:
     if not path.exists():
-        raise FileNotFoundError(f"Segments CSV not found: {path}")
+        raise FileNotFoundError(f"未找到分段 CSV 文件: {path}")
 
     segments: list[Segment] = []
     seen: set[str] = set()
@@ -38,15 +38,15 @@ def read_segments(path: Path) -> list[Segment]:
             if row[0].strip().lower() == "name":
                 continue
             if len(row) != 3:
-                raise ValueError(f"{path}:{line_no}: expected name,start,end")
+                raise ValueError(f"{path}:{line_no}: 期望格式为 name,start,end")
 
             name, start_text, end_text = [cell.strip() for cell in row]
             if not name:
-                raise ValueError(f"{path}:{line_no}: segment name is required")
+                raise ValueError(f"{path}:{line_no}: 必须提供分段名称")
             start_ms = parse_time(start_text)
             end_ms = parse_time(end_text)
             if end_ms <= start_ms:
-                raise ValueError(f"{path}:{line_no}: end must be after start")
+                raise ValueError(f"{path}:{line_no}: 结束时间必须在开始时间之后")
 
             base_safe = safe_name(name)
             candidate = base_safe
@@ -58,5 +58,5 @@ def read_segments(path: Path) -> list[Segment]:
             segments.append(Segment(name=name, safe_name=candidate, start_ms=start_ms, end_ms=end_ms))
 
     if not segments:
-        raise ValueError(f"No segments found in {path}")
+        raise ValueError(f"在 {path} 中未找到任何分段")
     return segments

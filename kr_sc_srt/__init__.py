@@ -1,3 +1,3 @@
-"""SOOP Korean-to-Chinese subtitle pipeline."""
+"""SOOP 韩语转中文字幕流水线。"""
 
 __version__ = "0.1.0"

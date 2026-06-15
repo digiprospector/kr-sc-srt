@@ -9,10 +9,10 @@ _TIME_RE = re.compile(
 
 
 def parse_time(value: str) -> int:
-    """Parse HH:MM:SS.mmm or MM:SS into milliseconds."""
+    """解析 HH:MM:SS.mmm 或 MM:SS 为毫秒数。"""
     match = _TIME_RE.match(value)
     if not match:
-        raise ValueError(f"Invalid time value: {value!r}")
+        raise ValueError(f"无效的时间值: {value!r}")
 
     hours = int(match.group("hours") or 0)
     minutes = int(match.group("minutes"))
@@ -23,7 +23,7 @@ def parse_time(value: str) -> int:
         millis = int(fraction[1:].ljust(3, "0")[:3])
 
     if minutes >= 60 or seconds >= 60:
-        raise ValueError(f"Invalid time value: {value!r}")
+        raise ValueError(f"无效的时间值: {value!r}")
 
     return ((hours * 60 + minutes) * 60 + seconds) * 1000 + millis
 

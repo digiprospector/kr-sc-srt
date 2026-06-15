@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
             model=args.translation_model,
         )
         write_srt(output_srt, translated)
-        print(f"wrote {output_srt}")
+        print(f"已写入 {output_srt}")
         return 0
 
     root = Path(args.root).expanduser().resolve()
@@ -37,12 +37,12 @@ def main(argv: list[str] | None = None) -> int:
         try:
             last = load_last_job(root)
         except FileNotFoundError as exc:
-            parser.error(f"{exc}. Set the source URL once, then use --resume-last on later runs.")
+            parser.error(f"{exc}。请先设置一次 source URL，之后运行便可使用 --resume-last。")
         source = source or last["source"]
         out_dir = out_dir or Path(last["out_dir"]).expanduser().resolve()
 
     if not source:
-        parser.error("source URL/file is required unless --resume-last is used")
+        parser.error("除非指定了 --resume-last，否则必须提供 source URL 或本地视频文件")
 
     model_cache_dir = Path(args.model_cache_dir).expanduser().resolve() if args.model_cache_dir else None
     cookies = Path(args.cookies).expanduser().resolve() if args.cookies else None
@@ -54,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
         cookies=cookies,
         force_all=args.force_all,
         force_stage=set(args.force_stage or []),
+        test=args.test,
     )
 
     if args.command == "prepare":
@@ -62,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         segments = Path(args.segments).expanduser().resolve() if args.segments else pipeline.out_dir / f"{pipeline.job_name}.csv"
         pipeline.render(segments, font=args.font)
     else:
-        parser.error(f"Unsupported command: {args.command}")
+        parser.error(f"不支持的命令: {args.command}")
     return 0
 
 
@@ -70,41 +71,42 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kr-sc-srt")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    prepare = subparsers.add_parser("prepare", help="First pass: low-res download and Korean ASR.")
+    prepare = subparsers.add_parser("prepare", help="第一阶段：低画质下载和韩语 ASR 语音识别。")
     _add_common(prepare)
-    prepare.add_argument("--asr-model", default=asr.DEFAULT_MODEL, help="FunASR model id.")
+    prepare.add_argument("--asr-model", default=asr.DEFAULT_MODEL, help="FunASR 模型 ID。")
     prepare.add_argument(
         "--asr-chunk-s",
         type=int,
         default=asr.DEFAULT_CHUNK_S,
-        help="ASR chunk duration in seconds.",
+        help="ASR 语音识别音频分片时长（秒）。",
     )
 
-    render = subparsers.add_parser("render", help="Second pass: high-res download, split, and burn subtitles.")
+    render = subparsers.add_parser("render", help="第二阶段：高画质下载、分段并烧录字幕。")
     _add_common(render)
-    render.add_argument("--segments", help="CSV file with name,start,end rows. Defaults to <out>/<job-name>.csv.")
-    render.add_argument("--font", default="Noto Sans CJK SC", help="Font used for burned Chinese subtitles.")
+    render.add_argument("--segments", help="CSV 文件路径，包含 name,start,end。默认为 <out>/<job-name>.csv。")
+    render.add_argument("--font", default="Noto Sans CJK SC", help="烧录中文硬字幕所使用的字体。")
 
-    translate = subparsers.add_parser("translate-srt", help="Local helper: translate Korean SRT into Chinese SRT.")
-    translate.add_argument("input", help="Input Korean SRT path.")
-    translate.add_argument("output", help="Output Chinese SRT path.")
-    translate.add_argument("--api-key", help="OpenAI-compatible API key. Prefer --api-key-env.")
-    translate.add_argument("--api-key-env", default="OPENAI_API_KEY", help="Environment variable containing the API key.")
-    translate.add_argument("--api-base", default=DEFAULT_API_BASE, help="OpenAI-compatible API base URL.")
-    translate.add_argument("--translation-model", default=DEFAULT_MODEL, help="Chat model for Korean-to-Chinese translation.")
+    translate = subparsers.add_parser("translate-srt", help="本地助手：将韩语 SRT 字幕翻译为中文 SRT 字幕。")
+    translate.add_argument("input", help="输入韩语 SRT 路径。")
+    translate.add_argument("output", help="输出中文 SRT 路径。")
+    translate.add_argument("--api-key", help="兼容 OpenAI 的 API-Key。更推荐使用 --api-key-env。")
+    translate.add_argument("--api-key-env", default="OPENAI_API_KEY", help="包含 API-Key 的环境变量名。")
+    translate.add_argument("--api-base", default=DEFAULT_API_BASE, help="兼容 OpenAI 的 API 基础 URL。")
+    translate.add_argument("--translation-model", default=DEFAULT_MODEL, help="用于韩语转中文翻译的聊天模型。")
 
     return parser
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("source", nargs="?", help="SOOP VOD URL or local video file.")
-    parser.add_argument("--root", default=str(default_root()), help="Persistent root directory.")
-    parser.add_argument("--out", help="Job output directory.")
-    parser.add_argument("--model-cache-dir", help="Persistent FunASR/model cache directory.")
-    parser.add_argument("--cookies", help="Optional cookies.txt for yt-dlp.")
-    parser.add_argument("--resume-last", action="store_true", help="Reuse the last URL and output directory from root.")
-    parser.add_argument("--force-stage", action="append", help="Force one stage to rerun. Can be repeated.")
-    parser.add_argument("--force-all", action="store_true", help="Rerun all stages.")
+    parser.add_argument("source", nargs="?", help="SOOP VOD URL 或本地视频文件。")
+    parser.add_argument("--root", default=str(default_root()), help="持久化根目录。")
+    parser.add_argument("--out", help="任务输出目录。")
+    parser.add_argument("--model-cache-dir", help="持久化 FunASR/模型缓存目录。")
+    parser.add_argument("--cookies", help="可选，用于 yt-dlp 的 cookies.txt 路径。")
+    parser.add_argument("--resume-last", action="store_true", help="复用根目录中上一次的 URL 和输出目录。")
+    parser.add_argument("--force-stage", action="append", help="强制重新运行某个阶段。可多次指定。")
+    parser.add_argument("--force-all", action="store_true", help="重新运行所有阶段。")
+    parser.add_argument("--test", action="store_true", help="测试模式：仅提取前 5 分钟的音频进行处理。")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ def parse_srt(content: str) -> list[Cue]:
         if not lines:
             continue
         if len(lines) < 2:
-            raise ValueError(f"Invalid SRT block: {block!r}")
+            raise ValueError(f"无效的 SRT 数据块: {block!r}")
 
         try:
             index = int(lines[0].strip())
@@ -35,12 +35,12 @@ def parse_srt(content: str) -> list[Cue]:
             text_lines = lines[1:]
 
         if "-->" not in timing:
-            raise ValueError(f"Invalid SRT timing line: {timing!r}")
+            raise ValueError(f"无效的 SRT 时间轴行: {timing!r}")
         start_text, end_text = [part.strip() for part in timing.split("-->", 1)]
         start_ms = parse_time(start_text)
         end_ms = parse_time(end_text)
         if end_ms <= start_ms:
-            raise ValueError(f"Invalid SRT timing range: {timing!r}")
+            raise ValueError(f"无效的 SRT 时间轴范围: {timing!r}")
         cues.append(Cue(index=index, start_ms=start_ms, end_ms=end_ms, text="\n".join(text_lines)))
     return renumber(cues)
 
@@ -80,7 +80,7 @@ def replace_text(cues: Iterable[Cue], texts: Iterable[str]) -> list[Cue]:
     cue_list = list(cues)
     text_list = list(texts)
     if len(cue_list) != len(text_list):
-        raise ValueError(f"Expected {len(cue_list)} translations, got {len(text_list)}")
+        raise ValueError(f"预期有 {len(cue_list)} 条翻译，但实际收到 {len(text_list)} 条")
     return [
         Cue(index=cue.index, start_ms=cue.start_ms, end_ms=cue.end_ms, text=text.strip())
         for cue, text in zip(cue_list, text_list)
@@ -89,7 +89,7 @@ def replace_text(cues: Iterable[Cue], texts: Iterable[str]) -> list[Cue]:
 
 def crop(cues: Iterable[Cue], start_ms: int, end_ms: int) -> list[Cue]:
     if end_ms <= start_ms:
-        raise ValueError("Segment end must be after start")
+        raise ValueError("分段结束时间必须在开始时间之后")
 
     cropped: list[Cue] = []
     for cue in cues:

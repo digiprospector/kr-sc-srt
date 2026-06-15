@@ -40,11 +40,18 @@ def download_with_ytdlp(source: str, out_dir: Path, stem: str, quality: str, coo
         if candidate.is_file() and candidate.stat().st_size > 0:
             return candidate
 
-    raise FileNotFoundError(f"yt-dlp completed but no output was found for {source}")
+    raise FileNotFoundError(f"yt-dlp 执行完毕，但未找到 {source} 的输出文件")
 
 
-def resolve_source(source: str, out_dir: Path, quality: str, cookies: Path | None = None) -> Path:
+def resolve_source(
+    source: str,
+    out_dir: Path,
+    quality: str,
+    stem: str | None = None,
+    cookies: Path | None = None,
+) -> Path:
     local = Path(source)
     if local.exists():
         return local.resolve()
-    return download_with_ytdlp(source, out_dir, f"source.{quality}", quality, cookies)
+    out_stem = stem or f"source.{quality}"
+    return download_with_ytdlp(source, out_dir, out_stem, quality, cookies)

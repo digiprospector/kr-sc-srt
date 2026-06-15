@@ -34,7 +34,7 @@ def test_cli_prepare_resume_last_without_saved_job_explains_first_run(tmp_path: 
         cli.main(["prepare", "--root", str(tmp_path), "--resume-last"])
 
     captured = capsys.readouterr()
-    assert "Set the source URL once" in captured.err
+    assert "请先设置一次 source URL" in captured.err
 
 
 def test_cli_translate_srt_writes_output(monkeypatch, tmp_path: Path):

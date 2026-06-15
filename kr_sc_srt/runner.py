@@ -11,7 +11,7 @@ class CommandError(RuntimeError):
         self.stdout = stdout
         self.stderr = stderr
         super().__init__(
-            f"Command failed with exit code {returncode}: {' '.join(command)}\n{stderr.strip() or stdout.strip()}"
+            f"命令执行失败，退出状态码 {returncode}: {' '.join(command)}\n{stderr.strip() or stdout.strip()}"
         )
 
 
@@ -22,17 +22,17 @@ def run(
     capture_stdout_only: bool = False,
     env: dict[str, str] | None = None,
 ) -> str:
-    """Run a command and return stdout when captured.
+    """运行命令并在被捕获时返回标准输出（stdout）。
 
-    Args:
-        capture: Capture both stdout and stderr (command runs silently).
-        capture_stdout_only: Capture stdout for parsing but let stderr pass
-            through to the terminal so progress output remains visible.
+    参数：
+        capture: 捕获标准输出和标准错误（命令行静默运行）。
+        capture_stdout_only: 仅捕获标准输出用于解析，而让标准错误直接输出到终端，
+            以保持进度显示可见。
     """
     print(f"+ {' '.join(command)}", flush=True)
     if capture_stdout_only:
         pipe_stdout = subprocess.PIPE
-        pipe_stderr = None  # inherit – visible in terminal
+        pipe_stderr = None  # 继承 - 在终端中可见
     elif capture:
         pipe_stdout = subprocess.PIPE
         pipe_stderr = subprocess.PIPE

@@ -23,5 +23,5 @@ def test_read_segments_rejects_invalid_range(tmp_path: Path):
     path = tmp_path / "job.csv"
     path.write_text("name,start,end\nbad,00:05,00:03\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="end must be after start"):
+    with pytest.raises(ValueError, match="结束时间必须在开始时间之后"):
         read_segments(path)
