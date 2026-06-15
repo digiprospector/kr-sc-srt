@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kr-sc-srt"
+version = "0.1.0"
+description = "Two-pass SOOP VOD Korean transcription, Chinese subtitle translation, and hard-sub rendering."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "funasr>=1.2.0",
+  "modelscope>=1.17.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+kr-sc-srt = "kr_sc_srt.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
