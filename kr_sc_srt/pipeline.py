@@ -53,7 +53,7 @@ class Pipeline:
         low_video_path = Path(low_video)
 
         audio_path = self.out_dir / f"{self.job_name}.aac"
-        limit_s = 300 if self.test else None
+        limit_s = 600 if self.test else None
         self._stage(
             "extract_audio",
             {"video": str(low_video_path), "limit_s": limit_s},

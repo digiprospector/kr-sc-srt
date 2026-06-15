@@ -100,7 +100,7 @@ kr-sc-srt render --root ./work --resume-last
 - `--cookies cookies.txt`: optional yt-dlp cookies file. First version only guarantees public SOOP VODs.
 - `--segments file.csv`: explicit segment CSV for `render`.
 - `--asr-chunk-s SECONDS`: ASR audio chunk size in seconds (default: 180).
-- `--test`: test mode, only extract and process the first 5 minutes of audio.
+- `--test`: test mode, only extract and process the first 10 minutes of audio.
 
 For local translation:
 

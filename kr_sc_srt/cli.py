@@ -106,7 +106,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--resume-last", action="store_true", help="复用根目录中上一次的 URL 和输出目录。")
     parser.add_argument("--force-stage", action="append", help="强制重新运行某个阶段。可多次指定。")
     parser.add_argument("--force-all", action="store_true", help="重新运行所有阶段。")
-    parser.add_argument("--test", action="store_true", help="测试模式：仅提取前 5 分钟的音频进行处理。")
+    parser.add_argument("--test", action="store_true", help="测试模式：仅提取前 10 分钟的音频进行处理。")
 
 
 if __name__ == "__main__":
