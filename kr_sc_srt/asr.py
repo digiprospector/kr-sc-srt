@@ -117,6 +117,7 @@ def _transcribe_chunked(
                     merge_vad=True,
                     merge_length_s=15,
                 )
+                print(f"[asr] 分片 {idx} 原始结果: {result}", flush=True)
                 chunk_cues = _result_to_cues(
                     result,
                     offset_ms=start_ms,
