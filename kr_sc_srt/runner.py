@@ -31,15 +31,34 @@ def run(
     """
     print(f"+ {' '.join(command)}", flush=True)
     if capture_stdout_only:
-        pipe_stdout = subprocess.PIPE
-        pipe_stderr = None  # 继承 - 在终端中可见
-    elif capture:
+        proc = subprocess.Popen(
+            command,
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=None,
+            bufsize=1,
+        )
+        stdout_lines = []
+        if proc.stdout:
+            for line in proc.stdout:
+                print(line, end="", flush=True)
+                stdout_lines.append(line)
+        proc.wait()
+        stdout = "".join(stdout_lines)
+        stderr = ""
+        if proc.returncode != 0:
+            raise CommandError(command, proc.returncode, stdout, stderr)
+        return stdout
+
+    if capture:
         pipe_stdout = subprocess.PIPE
         pipe_stderr = subprocess.PIPE
     else:
         pipe_stdout = None
         pipe_stderr = None
-    process = subprocess.run(
+    run_process = subprocess.run(
         command,
         cwd=str(cwd) if cwd else None,
         env=env,
@@ -48,8 +67,8 @@ def run(
         stderr=pipe_stderr,
         check=False,
     )
-    stdout = process.stdout or ""
-    stderr = process.stderr or ""
-    if process.returncode != 0:
-        raise CommandError(command, process.returncode, stdout, stderr)
+    stdout = run_process.stdout or ""
+    stderr = run_process.stderr or ""
+    if run_process.returncode != 0:
+        raise CommandError(command, run_process.returncode, stdout, stderr)
     return stdout
