@@ -65,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
             vad_min_silence_ms=args.vad_min_silence_ms,
             vad_speech_pad_ms=args.vad_speech_pad_ms,
         )
+    elif args.command == "download-high":
+        pipeline.download_high()
     elif args.command == "render":
         segments = Path(args.segments).expanduser().resolve() if args.segments else pipeline.out_dir / f"{pipeline.job_name}.csv"
         pipeline.render(segments, font=args.font)
@@ -104,6 +106,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=asr.DEFAULT_VAD_SPEECH_PAD_MS,
         help="Silero VAD 语音片段前后填充（毫秒）。",
     )
+
+    download_high = subparsers.add_parser("download-high", help="下载高画质视频（推荐在 CPU 模式下运行以节省 GPU 额度）。")
+    _add_common(download_high)
 
     render = subparsers.add_parser("render", help="第二阶段：高画质下载、分段并烧录字幕。")
     _add_common(render)

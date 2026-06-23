@@ -130,6 +130,16 @@ class Pipeline:
         self.log(f"[{_timestamp()}] 请在本地进行翻译，并将中文硬字幕保存为: {self.out_dir / f'{self.job_name}.zh.srt'}")
         self.log(f"[{_timestamp()}] prepare 阶段已完成")
 
+    def download_high(self) -> None:
+        self.log(f"[{_timestamp()}] download_high 阶段已启动")
+        high_video = self._stage(
+            "download_high",
+            {"source": self.source, "quality": "high", "cookies": str(self.cookies) if self.cookies else None},
+            [],
+            lambda: StageResult({"video": str(download.resolve_source(self.source, self.out_dir, "high", stem=f"{self.job_name}.high", cookies=self.cookies))}),
+        )["video"]
+        self.log(f"[{_timestamp()}] 高画质视频下载已完成: {high_video}")
+
     def render(self, segments_csv: Path, font: str) -> None:
         self.log(f"[{_timestamp()}] render 阶段已启动")
         zh_srt = self.out_dir / f"{self.job_name}.zh.srt"
